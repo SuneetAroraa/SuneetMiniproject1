@@ -1,76 +1,22 @@
-import httpx
-import asyncio
-from PIL import Image
-import sqlite3
-from datetime import datetime
-import uuid
-import os
-from dotenv import load_dotenv
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from database import init_db
+from image_catalogue import query_images,fetch_images
 
-load_dotenv()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
 
-url = 'https://api.unsplash.com/photos/random'
-api_key = os.getenv("UNSPLASH_ACCESS_KEY")
-headers = {"Authorization": "Client-ID {}".format(api_key)}
+app = FastAPI(lifespan=lifespan)
 
+@app.get("/catalogue")
+async def catalogue():
+    await fetch_images()   
+    images = query_images()
+    return {"images": images}
 
-def image_details(filename,img_url):
-    con = sqlite3.connect('sql.db')
-    cur = con.cursor()
-    img = Image.open(filename)
-    width,height = img.size
-    imgformat = img.format
-    single_pixel = img.resize((1, 1), resample=Image.Resampling.BOX)
-    average_color = single_pixel.getpixel((0, 0))
-    r, g, b = average_color[:3]
-    hex_colour = f"#{r:02x}{g:02x}{b:02x}"
-    fetched_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cur.execute("""INSERT INTO images(file_name,image_url, width, height, format,avg_colour, fetched_at)VALUES (?, ?, ?,?, ?, ?, ?)
-    """,
-    (filename,img_url, width, height, imgformat,hex_colour, fetched_at))
-    con.commit()
-    con.close()
-    
-
-
-def save_img(image_response,img_url):
-    #filename = f"/Users/suneetarora/Desktop/Image Catalogue Tool/images/image_{i}.jpeg"
-    filename = f"/Users/suneetarora/Desktop/Image Catalogue Tool/images/{uuid.uuid4()}.jpeg"
-
-    with open(filename,"wb") as f:
-        f.write(image_response.content)
-
-    image_details(filename,img_url)
-
-async def fetch(client):
-    try:
-        r = await client.get(url)
-        r.raise_for_status()
-        data = r.json()
-        image_url = data["urls"]["regular"]
-        image_response = await client.get(image_url)
-        image_response.raise_for_status()
-        save_img(image_response,image_url)
-    except httpx.HTTPStatusError as e:
-        print(f"HTTP error fetching image: {e}")
-    except httpx.RequestError as e:
-        print(f"Network error fetching image: {e}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-
-        
-
-async def main():
-    async with httpx.AsyncClient(headers=headers) as client:
-        tasks = [fetch(client) for _ in range(5)]
-        await asyncio.gather(*tasks)
-
-            # print("Status:", r.status_code)
-            # print("Content-Type:", r.headers.get("content-type")
-
-
-asyncio.run(main())
-con = sqlite3.connect('sql.db')
-cur = con.cursor()
-cur.execute("Select * from images")
-print(cur.fetchall())
+@app.get("/search")
+async def search(format: str):
+    results = query_images(format) 
+    return {"results": results}
