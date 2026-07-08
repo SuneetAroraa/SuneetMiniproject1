@@ -6,7 +6,7 @@ from datetime import datetime
 import uuid
 import os
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from io import BytesIO
 
 load_dotenv()
 
@@ -14,35 +14,31 @@ load_dotenv()
 url = 'https://api.unsplash.com/photos/random'
 api_key = os.getenv("UNSPLASH_ACCESS_KEY")
 headers = {"Authorization": "Client-ID {}".format(api_key)}
+    
 
+def save_img(image_response, img_url):
 
-def image_details(filename,img_url):
-    con = sqlite3.connect('sql.db')
-    cur = con.cursor()
-    img = Image.open(filename)
-    width,height = img.size
+    img = Image.open(BytesIO(image_response.content))
+    width, height = img.size
     imgformat = img.format
     single_pixel = img.resize((1, 1), resample=Image.Resampling.BOX)
     average_color = single_pixel.getpixel((0, 0))
     r, g, b = average_color[:3]
     hex_colour = f"#{r:02x}{g:02x}{b:02x}"
     fetched_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cur.execute("""INSERT INTO images(file_name,image_url, width, height, format,avg_colour, fetched_at)VALUES (?, ?, ?,?, ?, ?, ?)
-    """,
-    (filename,img_url, width, height, imgformat,hex_colour, fetched_at))
-    con.commit()
-    con.close()
-    
 
-
-def save_img(image_response,img_url):
-    #filename = f"/Users/suneetarora/Desktop/Image Catalogue Tool/images/image_{i}.jpeg"
-    filename = f"/Users/suneetarora/Desktop/Image Catalogue Tool/images/{uuid.uuid4()}.jpeg"
-
-    with open(filename,"wb") as f:
+    os.makedirs("images", exist_ok=True)
+    filename = os.path.join("images", f"{uuid.uuid4()}.jpeg")
+    with open(filename, "wb") as f:
         f.write(image_response.content)
 
-    image_details(filename,img_url)
+    with sqlite3.connect('sql.db') as con:
+        cur = con.cursor()
+        cur.execute("""INSERT INTO images(file_name, image_url, width, height, format, avg_colour, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (filename, img_url, width, height, imgformat, hex_colour, fetched_at))
+        con.commit()
 
 async def fetch(client):
     try:
@@ -71,15 +67,15 @@ async def fetch_images():
             # print("Content-Type:", r.headers.get("content-type")
 
 def query_images(format: str = None):
-    con = sqlite3.connect('sql.db')
-    cur = con.cursor()
-    if format:
-        cur.execute("SELECT * FROM images where format = ?",(format,))
-    else:
-        cur.execute("SELECT * FROM images")
-    rows = cur.fetchall()
-    con.close()
-    return rows
+    with sqlite3.connect('sql.db') as con:
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
+        if format:
+            cur.execute("SELECT * FROM images WHERE format = ?", (format,))
+        else:
+            cur.execute("SELECT * FROM images")
+        return [dict(row) for row in cur.fetchall()]
+    
 # asyncio.run(main())
 # con = sqlite3.connect('sql.db')
 # cur = con.cursor()

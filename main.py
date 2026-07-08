@@ -6,13 +6,13 @@ from image_catalogue import query_images,fetch_images
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    await fetch_images()
     yield
 
 app = FastAPI(lifespan=lifespan)
 
 @app.get("/catalogue")
 async def catalogue():
-    await fetch_images()   
     images = query_images()
     return {"images": images}
 
