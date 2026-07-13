@@ -63,9 +63,6 @@ async def fetch_images():
         tasks = [fetch(client) for _ in range(5)]
         await asyncio.gather(*tasks)
 
-            # print("Status:", r.status_code)
-            # print("Content-Type:", r.headers.get("content-type")
-
 def query_images(format: str = None):
     with sqlite3.connect('sql.db') as con:
         con.row_factory = sqlite3.Row
@@ -76,8 +73,3 @@ def query_images(format: str = None):
             cur.execute("SELECT * FROM images")
         return [dict(row) for row in cur.fetchall()]
     
-# asyncio.run(main())
-# con = sqlite3.connect('sql.db')
-# cur = con.cursor()
-# cur.execute("Select * from images")
-# print(cur.fetchall())
